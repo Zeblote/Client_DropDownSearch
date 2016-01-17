@@ -40,9 +40,13 @@ function GuiPopUpMenuCtrl::ddsCreate(%this)
 		%n1 = %this.profile.getName();
 		%n2 = "DDS_SearchText_" @ %this.profile.getName();
 
+		%color1 = getColorF(%this.profile.fontColor);
+		%color2 = getColorF(%this.profile.fillColor);
+		%color = getColorI(vectorScale(vectorAdd(%color1, %color2), 0.5) SPC 1);
+
 		%cmd =        "%p = new GuiControlProfile(" @ %n2 @ ":" @ %n1 @ ") {";
 		%cmd = %cmd @ "justify = left;";
-		%cmd = %cmd @ "fontColor = \"255 0 0 255\";";
+		%cmd = %cmd @ "fontColor = \"" @ %color @"\";";
 		%cmd = %cmd @ "textOffset = \"0 0\";";
 		%cmd = %cmd @ "};";
 
@@ -73,14 +77,14 @@ function GuiPopUpMenuCtrl::ddsCreate(%this)
 		%n1 = %this.profile.getName();
 		%n2 = "DDS_SearchList_" @ %this.profile.getName();
 
-		%color = %this.profile.fillColorHL;
-		%r = getWord(%color, 0);
-		%g = getWord(%color, 1);
-		%b = getWord(%color, 2);
-		%color = mFloor(%r * (4/5)) SPC mFloor(%g * (4/5)) SPC mFloor(%b * (4/5)) SPC 255;
+		%color1 = getColorF(%this.profile.fontColor);
+		%color2 = getColorF(%this.profile.fillColor);
+		%color = getColorI(vectorScale(vectorAdd(%color1, %color2), 0.5) SPC 1);
+
 
 		%cmd =        "%p = new GuiControlProfile(" @ %n2 @ ":" @ %n1 @ ") {";
 		%cmd = %cmd @ "fillColorHL = \"" @ %color @ "\";";
+		%cmd = %cmd @ "fontColorHL = \"" @ %this.profile.fontColor @ "\";";
 		%cmd = %cmd @ "mouseOverSelected = true;";
 		%cmd = %cmd @ "};";
 
