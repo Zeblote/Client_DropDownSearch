@@ -460,15 +460,15 @@ function GuiPopUpMenuCtrl::ddsOpenMenu(%this)
 	%list.resize(1, 1, 0, 0);
 
 
+	//Push background dialog
+	Canvas.pushDialog(%this.ddsDialog, 99);
+
+
 	//Highlight the currently selected row
 	%this.ddsSelectedId = %this.getSelected();
 	%list.selectLineNoCallback(%this.ddsSelectedId);
 
 	%this.ddsFilter = "";
-
-
-	//Push background dialog
-	Canvas.pushDialog(%this.ddsDialog, 99);
 
 	//Focus on search field
 	%searchInput.makeFirstResponder(true);
