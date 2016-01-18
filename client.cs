@@ -416,9 +416,13 @@ function GuiPopUpMenuCtrl::ddsOpenMenu(%this)
 		%listWidth += 16;
 	}
 
+	//List not wide enough
 	if(getWord(%thisExt, 0) > %listWidth)
 		%listWidth = getWord(%thisExt, 0);
 
+	//No entries
+	if(!%this.ddsRowCount)
+		%listHeight = 4;
 
 	//Create scroll
 	%scroll = new GuiScrollCtrl()
@@ -568,6 +572,7 @@ function GuiPopUpMenuCtrl::ddsUpdateScrollRect(%this)
 	if(%minWidth > %listWidth)
 		%listWidth = %minWidth;
 
+	//No entries
 	if(!%lineCount)
 		%listHeight = 4;
 
