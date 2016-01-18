@@ -265,7 +265,7 @@ function GuiPopUpMenuCtrl::ddsUpdateRows(%this)
 	//List opened, package should have set this var
 	%list = $DDS::LastTextList;
 
-	if(isObject(%list))
+	if(isObject(%list) && %list.rowCount() == %this.size())
 	{
 		%cnt = %list.rowCount();
 
@@ -484,7 +484,10 @@ function GuiPopUpMenuCtrl::ddsOpenMenu(%this)
 	%this.ddsActionMap.bindCmd("keyboard", "shift down", %this @ ".ddsStartMoveDown();", %this @ ".ddsStopMove();");
 	%this.ddsActionMap.bindCmd("keyboard", "ctrl down", %this @ ".ddsStartMoveDown();", %this @ ".ddsStopMove();");
 	%this.ddsActionMap.bindCmd("keyboard", "alt down", %this @ ".ddsStartMoveDown();", %this @ ".ddsStopMove();");
+	%this.ddsActionMap.bind("mouse0", "zaxis", "ddsHandleScrolling");
 	%this.ddsActionMap.push();
+
+	$DDS::CurrentMenu = %this;
 }
 
 
@@ -696,13 +699,27 @@ function GuiPopupMenuCtrl::ddsMoveSelection(%this, %dir)
 	%curRow = %this.ddsList.getRowNumById(%this.ddsSelectedId);
 	%newRow = %curRow + %dir;
 	
-	if(%newRow < 0 || %newRow > %this.ddsRowCount - 1)
+	if(%newRow < 0 || %newRow > %this.ddsList.rowCount() - 1)
 		return;
 
 	%this.ddsSelectedId = %this.ddsList.getRowId(%newRow);
 	%this.ddsList.selectLineNoCallback(%this.ddsSelectedId);
 
 	%this.ddsUpdateTabHint();
+}
+
+//Handle scrolling the selected line with mouse
+function ddsHandleScrolling(%val)
+{
+	if(isObject($DDS::CurrentMenu))
+	{
+		$DDS::CurrentMenu.ddsStopMove();
+
+		if(%val > 1)
+			$DDS::CurrentMenu.ddsMoveSelection(-1);
+		else
+			$DDS::CurrentMenu.ddsMoveSelection(1);
+	}
 }
 
 
@@ -728,6 +745,8 @@ function GuiPopUpMenuCtrl::ddsCloseMenu(%this)
 
 	%this.ddsActionMap.pop();
 	%this.ddsActionMap.delete();
+
+	$DDS::CurrentMenu = 0;
 }
 
 
