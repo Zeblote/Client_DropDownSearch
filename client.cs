@@ -15,169 +15,343 @@ exec("./updater.cs");
 
 //Drop down lists added here will not be affected
 $DDS::BlockCtrl["ServerSettingsGui_MaxPlayers"] = true;
-$DDS::BlockCtrl["GuiEditorContentList"] = true;
-$DDS::BlockCtrl["GuiEditorResList"] = true;
 
 //Space to keep between the selected row and the scroll border
 $DDS::SelectionPadding = 120;
 
 
 
-//Initialization
+//GuiPopUpMenuCtrl hooks
 ///////////////////////////////////////////////////////////////////////////
 
-//Creates better popup menu to replace original
-function GuiPopUpMenuCtrl::ddsCreate(%this)
+//Fix missing function errors
+if(!isFunction(GuiTextListCtrl, onAdd))
+	eval("function GuiTextListCtrl::onAdd(){}");
+
+if(!isFunction(GuiPopUpMenuCtrl, onWake))
+	eval("function GuiPopUpMenuCtrl::onWake(){}");
+
+if(!isFunction(GuiPopUpMenuCtrl, onRemove))
+	eval("function GuiPopUpMenuCtrl::onRemove(){}");
+
+//Packaged functions
+package DropDownSearch
 {
-	//Already upgraded, do nothing
-	if(isObject(%this.ddsControl))
+	//New drop down list was created, initialize dds list
+	function GuiPopUpMenuCtrl::onWake(%this)
+	{
+		parent::onWake(%this);
+
+		%this.ddsInit();
+	}
+
+	//Drop down list was deleted, delete dds list
+	function GuiPopUpMenuCtrl::onRemove(%this)
+	{
+		%this.ddsDestroy();
+
+		parent::onRemove(%this);
+	}
+
+	//A line was added to the drop down list, refresh dds list
+	function GuiPopUpMenuCtrl::add(%this, %name, %id, %scheme)
+	{
+		parent::add(%this, %name, %id, %scheme);
+
+		%this.ddsUpdateRequired = true;
+	}
+
+	//A line was added to the drop down list, refresh dds list
+	function GuiPopUpMenuCtrl::addFront(%this, %name, %id, %scheme)
+	{
+		parent::addFront(%this, %name, %id, %scheme);
+
+		%this.ddsUpdateRequired = true;
+	}
+
+	//The drop down list was sorted, refresh dds list
+	function GuiPopUpMenuCtrl::sort(%this)
+	{
+		parent::sort(%this);
+
+		%this.ddsUpdateRequired = true;
+	}
+
+	//The drop down list was cleared, refresh dds list
+	function GuiPopUpMenuCtrl::clear(%this)
+	{
+		parent::clear(%this);
+
+		%this.ddsUpdateRequired = true;
+	}
+
+	//Force open the drop down list, open dds list instead
+	function GuiPopUpMenuCtrl::forceOnAction(%this)
+	{
+		if(%this.ddsOverride)
+			%this.ddsOpenMenu();
+		else
+			parent::forceOnAction(%this);
+	}
+
+	//Force close the drop down list, close dds list instead
+	function GuiPopUpMenuCtrl::forceClose(%this)
+	{
+		if(%this.ddsOverride)
+			%this.ddsCloseMenu();
+		else
+			parent::forceClose(%this);
+	}
+
+	//Internal text list was created (used by function later on)
+	function GuiTextListCtrl::onAdd(%this)
+	{
+		parent::onAdd(%this);
+
+		$DDS::LastTextList = %this;
+	}
+};
+
+
+
+//Creating a dds control
+///////////////////////////////////////////////////////////////////////////
+
+//Creates gui profiles required for the dds list
+function GuiPopUpMenuCtrl::ddsCreateProfiles(%this)
+{
+	%profile = (strLen(%this.profile) ? %this.profile : GuiPopUpMenuProfile);
+	%name = %profile.getName();
+
+	//Get mean between font and background color for highlighting
+	%fCol = getColorF(%profile.fontColor);
+	%bCol = getColorF(%profile.fillColor);
+	%hCol = getColorI(vectorScale(vectorAdd(%fCol, %bCol), 0.5) SPC 1);
+
+	//Text profile for tab completion hint
+	if(!$DDS::TextProfile[%name])
+	{
+		eval("%p = new GuiControlProfile(DDS_TextProfile_" @ %name @ ":" @ %name @ "){"
+			@ "justify = left;"
+			@ "fontColor = \"" @ %hCol @"\";"
+			@ "textOffset = \"0 0\";"
+			@ "};"
+		);
+
+		$DDS::TextProfile[%name] = %p;
+	}
+
+	//Text profile for search input
+	if(!$DDS::InputProfile[%name])
+	{
+		eval("%p = new GuiControlProfile(DDS_InputProfile_" @ %name @ ":" @ %name @ "){"
+			@ "justify = left;"
+			@ "canKeyFocus = true;"
+			@ "textOffset = \"0 0\";"
+			@ "border = false;"
+			@ "opague = false;"
+			@ "fillColor = \"0 0 0 0\";"
+			@ "};"
+		);
+
+		$DDS::InputProfile[%name] = %p;
+	}
+
+	//Text profile for dds list
+	if(!$DDS::ListProfile[%name])
+	{
+		eval("%p = new GuiControlProfile(DDS_ListProfile_" @ %name @ ":" @ %name @ "){"
+			@ "fillColorHL = \"" @ %hCol @ "\";"
+			@ "fontColorHL = \"" @ %profile.fontColor @ "\";"
+			@ "mouseOverSelected = true;"
+			@ "};"
+		);
+
+		$DDS::ListProfile[%name] = %p;
+	}
+}
+
+//Creates better popup menu to replace original
+function GuiPopUpMenuCtrl::ddsInit(%this)
+{
+	//Already has a dds list, do nothing
+	if(isObject(%this.ddsButton))
 		return;
 
+	//In blocked list, do nothing
+	if($DDS::BlockCtrl[%this.getName()])
+		return;
 
-	//Create DDS profiles
-	if(!$DDS::STP[%this.profile.getName()])
-	{
-		%n1 = %this.profile.getName();
-		%n2 = "DDS_SearchText_" @ %this.profile.getName();
+	//Create dds profiles
+	%this.ddsCreateProfiles();
 
-		%color1 = getColorF(%this.profile.fontColor);
-		%color2 = getColorF(%this.profile.fillColor);
-		%color = getColorI(vectorScale(vectorAdd(%color1, %color2), 0.5) SPC 1);
-
-		%cmd =        "%p = new GuiControlProfile(" @ %n2 @ ":" @ %n1 @ ") {";
-		%cmd = %cmd @ "justify = left;";
-		%cmd = %cmd @ "fontColor = \"" @ %color @"\";";
-		%cmd = %cmd @ "textOffset = \"0 0\";";
-		%cmd = %cmd @ "};";
-
-		eval(%cmd);
-		$DDS::STP[%this.profile.getName()] = %p;
-	}
-
-	if(!$DDS::SIP[%this.profile.getName()])
-	{
-		%n1 = %this.profile.getName();
-		%n2 = "DDS_SearchInput_" @ %this.profile.getName();
-
-		%cmd =        "%p = new GuiControlProfile(" @ %n2 @ ":" @ %n1 @ ") {";
-		%cmd = %cmd @ "justify = left;";
-		%cmd = %cmd @ "canKeyFocus = true;";
-		%cmd = %cmd @ "textOffset = \"0 0\";";
-		%cmd = %cmd @ "border = false;";
-		%cmd = %cmd @ "opague = false;";
-		%cmd = %cmd @ "fillColor = \"0 0 0 0\";";
-		%cmd = %cmd @ "};";
-
-		eval(%cmd);
-		$DDS::SIP[%this.profile.getName()] = %p;
-	}
-
-	if(!$DDS::SLP[%this.profile.getName()])
-	{
-		%n1 = %this.profile.getName();
-		%n2 = "DDS_SearchList_" @ %this.profile.getName();
-
-		%color1 = getColorF(%this.profile.fontColor);
-		%color2 = getColorF(%this.profile.fillColor);
-		%color = getColorI(vectorScale(vectorAdd(%color1, %color2), 0.5) SPC 1);
-
-
-		%cmd =        "%p = new GuiControlProfile(" @ %n2 @ ":" @ %n1 @ ") {";
-		%cmd = %cmd @ "fillColorHL = \"" @ %color @ "\";";
-		%cmd = %cmd @ "fontColorHL = \"" @ %this.profile.fontColor @ "\";";
-		%cmd = %cmd @ "mouseOverSelected = true;";
-		%cmd = %cmd @ "};";
-
-		eval(%cmd);
-		$DDS::SLP[%this.profile.getName()] = %p;
-	}
-
-
-	//Create DDS control
-	%this.ddsControl = new GuiMouseEventCtrl(DDS_PopUpMenuCtrl)
+	//Create dds button
+	%this.ddsButton = new GuiMouseEventCtrl(DDS_ButtonCtrl)
 	{
 		position = "0 0";
 		extent = %this.getExtent();
-
-		lineCount = 0;
-		realControl = %this;
+		ddsControl = %this;
+		horizSizing = "width";
+		vertSizing = "height";
 	};
 
-	//Add to itself using hack. This control won't render,
-	//but it's only a mouse event ctrl so it works just fine!
-	GuiControl::add(%this, %this.ddsControl);
+	//Add button to this control (can't use own .add method, it's broken?)
+	GuiControl::add(%this, %this.ddsButton);
+
+	//Have to copy the list before we can open this
+	%this.ddsUpdateRequired = true;
+
+	//Force opening this list should open the dds list instead
+	%this.ddsOverride = true;
 }
 
-
-
-//Line list
-///////////////////////////////////////////////////////////////////////////
-
-//We can't get a list of all lines in the original control,
-//so we have to make our own list of them as we go...
-
-//Adds a line to the end of the list
-function DDS_PopUpMenuCtrl::addLineBack(%this, %line, %id)
+//Deletes dds controls
+function GuiPopUpMenuCtrl::ddsDestroy(%this)
 {
-	%c = %this.lineCount;
-
-	%this.line[%c] = %line;
-	%this.lineId[%c] = %id;
-	%this.lineLookup[%id] = %c;
-	%this.lineCount++;
-}
-
-//Adds a line to the start of the list
-function DDS_PopUpMenuCtrl::addLineFront(%this, %line, %id)
-{
-	for(%i = %this.lineCount; %i > 0; %i--)
-	{
-		%this.line[%i] = %this.line[%i - 1];
-		%this.lineId[%i] = %this.lineId[%i - 1];
-		%this.lineLookup[%this.lineId[%i]] = %i;
-	}
-	
-	%this.line[0] = %line;
-	%this.lineId[0] = %id;
-	%this.lineLookup[%id] = 0;
-	%this.lineCount++;
-}
-
-//Clears line list
-function DDS_PopUpMenuCtrl::clearLines(%this)
-{
-	%c = %this.lineCount;
-
-	for(%i = 0; %i < %c; %i++)
-	{
-		%this.lineLookup[%this.lineId[%i]] = "";
-		%this.lineWidth[%i] = "";
-		%this.lineId[%i] = "";
-		%this.line[%i] = "";
-	}
-
-	%this.lineCount = 0;
-}
-
-
-
-//Opening and closing the menu
-///////////////////////////////////////////////////////////////////////////
-
-//Opens better popup menu
-function DDS_PopUpMenuCtrl::openMenu(%this)
-{
-	//Menu already open - do nothing
-	if(%this.menuOpen)
+	//Doesn't have a dds list, do nothing
+	if(!isObject(%this.ddsButton))
 		return;
 
-	%profile = %this.realControl.profile;
+	%this.ddsCloseMenu();
+	%this.ddsOverride = false;
+
+	%this.ddsButton.delete();
+}
+
+
+
+//Opening a dds list
+///////////////////////////////////////////////////////////////////////////
+
+//Clicked popup, open menu
+function DDS_ButtonCtrl::onMouseDown(%this)
+{
+	%this.ddsControl.ddsOpenMenu();
+}
+
+//Copy the rows from the drop down list to a buffer
+function GuiPopUpMenuCtrl::ddsUpdateRows(%this)
+{
+	//Make sure we use the id, or this will fail
+	%this = %this.getId();
+
+	//If the list is empty, don't do anything
+	if(%this.size() == 0)
+	{
+		%this.ddsRowCount = 0;
+		return;
+	}
+
+	//Can't copy the rows from the drop down list directly,
+	//so open the list and get them from the internal one...
+
+	//Prepare control to ensure it does NOT call any callbacks
+	%var = %this.variable;
+	%cmd = %this.command;
+	%alt = %this.altCommand;
+
+	%this.variable   = "";
+	%this.command    = "";
+	%this.altCommand = "";
+
+	%name = %this.getName();
+	%this.setName("DDS_Temp");
+
+	//Open the list
+	%this.ddsOverride = false;
+	%this.forceOnAction();
+
+	//List opened, package should have set this var
+	%list = $DDS::LastTextList;
+
+	if(isObject(%list))
+	{
+		%cnt = %list.rowCount();
+
+		//Copy lines
+		for(%i = 0; %i < %cnt; %i++)
+		{
+			%this.ddsRow[%i] = %list.getRowText(%i);
+			%this.ddsRowId[%i] = %list.getRowId(%i);
+			%this.ddsRowNum[%this.ddsRowId[%i]] = %i;
+		}
+
+		%this.ddsRowCount = %cnt;
+	}
+	else
+	{
+		error("Failed to copy lines from drop down list " @ %this @ ", the internal list was not created!");
+		%this.ddsRowCount = 0;
+	}
+
+	//Close list and restore callbacks
+	%this.forceClose();
+	%this.ddsOverride = true;
+
+	%this.setName(%name);
+	%this.variable   = %var;
+	%this.command    = %cmd;
+	%this.altCommand = %alt;
+}
+
+//Get total width of all lines
+function GuiPopUpMenuCtrl::ddsCalcListWidth(%this)
+{
+	//Create control to find width
+	%profile = (strLen(%this.profile) ? %this.profile : GuiPopUpMenuProfile);
+
+	//Enable auto resize
+	%orig = %profile.autoSizeWidth;
+	%profile.autoSizeWidth = true;
+
+	%ctrl = new GuiTextCtrl(){profile = %profile;};
+
+	//Find max width of all lines
+	%width = 0;
+
+	for(%i = 0; %i < %this.ddsRowCount; %i++)
+	{
+		%ctrl.setText(%this.ddsRow[%i]);
+
+		//Save width of every line for later
+		%w = getWord(%ctrl.getExtent(), 0) + 8;
+		%this.ddsRowWidth[%i] = %w;
+
+		if(%w > %width)
+			%width = %w;
+	}
+
+	%ctrl.delete();
+	%profile.autoSizeWidth = %orig;
+
+	return %width;
+}
+
+//Open the dds list
+function GuiPopUpMenuCtrl::ddsOpenMenu(%this)
+{
+	//Menu already open - do nothing
+	if(isObject(%this.ddsDialog))
+		return;
+
+	//Make sure we have the latest row list
+	if(%this.ddsUpdateRequired)
+		%this.ddsUpdateRows();
+
+
+	//Some things that we will need often
+	%thisPos = %this.getScreenPosition();
+	%thisExt = %this.getExtent();
+	%canvasExt = Canvas.getExtent();
+
+	%profile = (strLen(%this.profile) ? %this.profile : GuiPopUpMenuProfile);
+
 
 	//Create the background ctrl
-	%this.dialog = new GuiMouseEventCtrl(DDS_BackgroundCtrl)
+	%this.ddsDialog = new GuiMouseEventCtrl(DDS_BackgroundCtrl)
 	{
 		position = "0 0";
-		extent = Canvas.getExtent();
+		extent = %canvasExt;
 		ddsControl = %this;
 	};
 
@@ -185,121 +359,111 @@ function DDS_PopUpMenuCtrl::openMenu(%this)
 	//Create the search field background
 	%searchBorder = new GuiSwatchCtrl()
 	{
-		position = %this.getScreenPosition();
-		extent = vectorSub(%this.getExtent(), "0 1");
+		position = %thisPos;
+		extent = vectorSub(%thisExt, "0 1");
 		color = %profile.borderColor;
 	};
-
-	%this.dialog.add(%searchBorder);
 
 	%searchFill = new GuiSwatchCtrl()
 	{
 		position = "1 1";
-		extent = vectorSub(%this.getExtent(), "2 1");
+		extent = vectorSub(%thisExt, "2 1");
 		color = %profile.fillColor;
 	};
 
 	%searchBorder.add(%searchFill);
+	%this.ddsDialog.add(%searchBorder);
 
 
 	//Create the search field
-	%searchTextProfile  = $DDS::STP[%profile];
-	%searchInputProfile = $DDS::SIP[%profile];
-
 	%searchText = new GuiTextCtrl()
 	{
-		profile = %searchTextProfile;
+		profile = $DDS::TextProfile[%profile.getName()];
 		position = "5 1";
-		extent = vectorSub(%this.getExtent(), "5 1");
+		extent = vectorSub(%thisExt, "5 1");
 		text = "Search...";
 	};
 
-	%this.searchText = %searchText;
-	%searchBorder.add(%searchText);
-
-	%searchInput = new GuiTextEditCtrl(DDS_PopUpInputCtrl)
+	%searchInput = new GuiTextEditCtrl(DDS_InputCtrl)
 	{
-		profile = %searchInputProfile;
+		profile = $DDS::InputProfile[%profile.getName()];
 		position = "2 1";
-		extent = vectorSub(%this.getExtent(), "2 1");
+		extent = vectorSub(%thisExt, "2 1");
 		tabComplete = true;
-		command = %this @ ".updateFilter($ThisControl.getValue());";
+		command = %this @ ".ddsUpdateFilter($ThisControl.getValue());";
 		altCommand = "$ThisControl.onTabComplete();";
-		escapeCommand = %this @ ".closeMenu();";
+		escapeCommand = %this @ ".ddsCloseMenu();";
 		ddsControl = %this;
 	};
 
-	%this.searchInput = %searchText;
+	%searchBorder.add(%searchText);
 	%searchBorder.add(%searchInput);
+	%this.ddsSearchText = %searchText;
 
 
-	//Create scroll ctrl
-	%rPos = %this.realControl.getScreenPosition();
-	%rExt = %this.realControl.getExtent();
+	//Calculate scroll rect
+	%listWidth = %this.ddsCalcListWidth();
 
-	%listWidth = %this.calcListWidth();
+	%startY = getWord(%thisPos, 1) + getWord(%thisExt, 1) - 1;
+	%listHeight = %this.ddsRowCount * (%profile.fontSize + 2);
+	%canvasHeight = getWord(%canvasExt, 1);
 
-	%start = getWord(%rPos, 1) + getWord(%rExt, 1) - 1;
-	%listHeight = %this.lineCount * (%profile.fontSize + 2);
-	%canvasHeight = getWord(Canvas.getExtent(), 1);
-
-	//List doesn't fit below completely...
-	if(%start + %listHeight + 12 > %canvasHeight)
+	if(%startY + %listHeight + 12 > %canvasHeight)
 	{
-		%listHeight = %canvasHeight - %start - 12;
+		//List doesn't fit below completely...
+		%listHeight = %canvasHeight - %startY - 12;
 		%listWidth += 16;
 	}
 
-	if(getWord(%rExt, 0) > %listWidth)
-		%listWidth = getWord(%rExt, 0);
+	if(getWord(%thisExt, 0) > %listWidth)
+		%listWidth = getWord(%thisExt, 0);
 
+
+	//Create scroll
 	%scroll = new GuiScrollCtrl()
 	{
 		profile = %profile;
-		position = getWord(%rPos, 0) SPC %start;
+		position = getWord(%thisPos, 0) SPC %startY;
 		extent = %listWidth SPC %listHeight + 2;
 
 		hScrollBar = "alwaysOff";
 		vScrollBar = "dynamic";
 	};
 
-	%this.scroll = %scroll;
-	%this.dialog.add(%scroll);
+	%this.ddsDialog.add(%scroll);
+	%this.ddsScroll = %scroll;
 
 
 	//Create text list
-	%list = new GuiTextListCtrl(DDS_PopUpListCtrl)
+	%list = new GuiTextListCtrl(DDS_ListCtrl)
 	{
-		profile = $DDS::SLP[%profile.getName()];
+		profile = $DDS::ListProfile[%profile.getName()];
 		position = "1 1";
 		extent = %listWidth SPC 0;
-		command = %this @ ".onLineSelected();";
+		command = %this @ ".ddsLineSelected();";
 	};
 
-	%this.list = %list;
 	%scroll.add(%list);
+	%this.ddsList = %list;
+
 
 	//Add lines to list (no filter when opening list)
-	for(%i = 0; %i < %this.lineCount; %i++)
-		%list.addRow(%this.lineId[%i], %this.line[%i]);
-
-	//Sort lines alphabetically
-	if(%this.sortLines)
-		%list.sort(0, true);
+	for(%i = 0; %i < %this.ddsRowCount; %i++)
+		%list.addRow(%this.ddsRowId[%i], %this.ddsRow[%i]);
 
 	//Fix list not extending to the far right (?????)
 	%list.resize(1, 1, 0, 0);
 
 
 	//Highlight the currently selected row
-	%this.selectedId = %this.realControl.getSelected();
-	%list.selectLineNoCallback(%this.realControl.getSelected());
+	%this.ddsSelectedId = %this.getSelected();
+	%list.selectLineNoCallback(%this.ddsSelectedId);
 
-	%this.currFilter = "";
+	%this.ddsFilter = "";
 
 
 	//Push background dialog
-	Canvas.pushDialog(%this.dialog, 99);
+	Canvas.pushDialog(%this.ddsDialog, 99);
 
 	//Focus on search field
 	%searchInput.makeFirstResponder(true);
@@ -308,41 +472,23 @@ function DDS_PopUpMenuCtrl::openMenu(%this)
 
 	//Create the actionmap for directional buttons
 	//Seems like we can't detect pressing up/down on their own... sad
-	%this.actionMap = new ActionMap();
-	%this.actionMap.bindCmd("keyboard", "shift up", %this @ ".startMoveUp();", %this @ ".stopMove();");
-	%this.actionMap.bindCmd("keyboard", "ctrl up", %this @ ".startMoveUp();", %this @ ".stopMove();");
-	%this.actionMap.bindCmd("keyboard", "alt up", %this @ ".startMoveUp();", %this @ ".stopMove();");
-	%this.actionMap.bindCmd("keyboard", "shift down", %this @ ".startMoveDown();", %this @ ".stopMove();");
-	%this.actionMap.bindCmd("keyboard", "ctrl down", %this @ ".startMoveDown();", %this @ ".stopMove();");
-	%this.actionMap.bindCmd("keyboard", "alt down", %this @ ".startMoveDown();", %this @ ".stopMove();");
-	%this.actionMap.push();
-
-	%this.menuOpen = true;
-}
-
-//Closes the popup menu
-function DDS_PopUpMenuCtrl::closeMenu(%this)
-{
-	//Menu not open - do nothing
-	if(!%this.menuOpen)
-		return;
-
-	Canvas.popDialog(%this.dialog);
-	%this.dialog.delete();
-
-	%this.actionMap.pop();
-	%this.actionMap.delete();
-
-	%this.menuOpen = false;
+	%this.ddsActionMap = new ActionMap();
+	%this.ddsActionMap.bindCmd("keyboard", "shift up", %this @ ".ddsStartMoveUp();", %this @ ".ddsStopMove();");
+	%this.ddsActionMap.bindCmd("keyboard", "ctrl up", %this @ ".ddsStartMoveUp();", %this @ ".ddsStopMove();");
+	%this.ddsActionMap.bindCmd("keyboard", "alt up", %this @ ".ddsStartMoveUp();", %this @ ".ddsStopMove();");
+	%this.ddsActionMap.bindCmd("keyboard", "shift down", %this @ ".ddsStartMoveDown();", %this @ ".ddsStopMove();");
+	%this.ddsActionMap.bindCmd("keyboard", "ctrl down", %this @ ".ddsStartMoveDown();", %this @ ".ddsStopMove();");
+	%this.ddsActionMap.bindCmd("keyboard", "alt down", %this @ ".ddsStartMoveDown();", %this @ ".ddsStopMove();");
+	%this.ddsActionMap.push();
 }
 
 
 
-//Selecting/filtering lines
+//Selecting and filtering lines
 ///////////////////////////////////////////////////////////////////////////
 
 //Select a line in the list, without passing it to the original
-function DDS_PopUpListCtrl::selectLineNoCallback(%this, %id)
+function DDS_ListCtrl::selectLineNoCallback(%this, %id)
 {
 	%str = %this.command;
 	%this.command = "";
@@ -354,7 +500,7 @@ function DDS_PopUpListCtrl::selectLineNoCallback(%this, %id)
 }
 
 //Move the control so the selected line is visible
-function DDS_PopUpListCtrl::makeSelectedVisible(%this)
+function DDS_ListCtrl::makeSelectedVisible(%this)
 {
 	%scrollHeight = getWord(%this.getGroup().getExtent(), 1);
 	%listHeight = getWord(%this.getExtent(), 1);
@@ -367,7 +513,7 @@ function DDS_PopUpListCtrl::makeSelectedVisible(%this)
 
 	//Find center of the currently selected row
 	%rowNum = %this.getRowNumById(%this.getSelectedId());
-	%rowPosition = %rowNum * (%this.profile.fontSize + 2) + %this.profile.fontSize / 2;
+	%rowPosition = 1 + %rowNum * (%this.profile.fontSize + 2) + %this.profile.fontSize / 2;
 
 	%distanceUp = %rowPosition + %currPos;
 	%distanceDown = (%scrollHeight - %currPos) - %rowPosition;
@@ -383,122 +529,29 @@ function DDS_PopUpListCtrl::makeSelectedVisible(%this)
 	%this.resize(1, %currPos, getWord(%this.getExtent(), 0), %listHeight);
 }
 
-//Update line filter
-function DDS_PopUpMenuCtrl::updateFilter(%this, %filter)
-{
-	//Filter unchanged - do nothing
-	if(%filter $= %this.currFilter)
-		return;
-
-	//Clear list
-	%this.list.clear();
-
-	%this.currFilter = %filter;
-
-	if(strLen(%filter) == 0)
-	{
-		//Add all lines to list
-		for(%i = 0; %i < %this.lineCount; %i++)
-			%this.list.addRow(%this.lineId[%i], %this.line[%i]);
-
-		if(%this.sortLines)
-			%this.list.sort(0, true);
-
-		//Select current line
-		%this.selectedId = %this.realControl.getSelected();
-	}
-	else
-	{
-		//Add all lines matching the filter
-		for(%i = 0; %i < %this.lineCount; %i++)
-		{
-			if(getSubStr(%this.line[%i], 0, strLen(%filter)) $= %filter)
-				%this.list.addRow(%this.lineId[%i], %this.line[%i]);
-		}
-
-		if(%this.sortLines)
-			%this.list.sort(0, true);
-
-		//Does the previously selected line still exist?
-		if(%this.list.getRowNumById(%this.selectedId) == -1)
-			%this.selectedId = %this.list.getRowId(0);
-	}
-
-	%this.updateTabHint();
-	%this.updateScrollRect();
-	%this.list.selectLineNoCallback(%this.selectedId);
-}
-
-//Update the tab completion hint
-function DDS_PopUpMenuCtrl::updateTabHint(%this)
-{
-	%f = %this.currFilter;
-
-	if(strLen(%f))
-		%this.searchText.setText(%f @ getSubStr(%this.list.getRowTextById(%this.selectedId), strLen(%f), 255));
-	else
-		%this.searchText.setText("Search...");
-}
-
-
-
-//List math
-///////////////////////////////////////////////////////////////////////////
-
-//Get total width of all lines
-function DDS_PopUpMenuCtrl::calcListWidth(%this)
-{
-	//Create control to find width
-	%profile = %this.realControl.profile;
-
-	%orig = %profile.autoSizeWidth;
-	%profile.autoSizeWidth = true;
-
-	%ctrl = new GuiTextCtrl(){profile = %profile;};
-
-	//Find max width of all lines
-	%width = 0;
-
-	for(%i = 0; %i < %this.lineCount; %i++)
-	{
-		%ctrl.setText(%this.line[%i]);
-
-		%w = getWord(%ctrl.getExtent(), 0) + 8;
-		%this.lineWidth[%i] = %w;
-
-		if(%w > %width)
-			%width = %w;
-	}
-
-	%ctrl.delete();
-	%profile.autoSizeWidth = %orig;
-
-	return %width;
-}
-
 //Update the scroll rect to fit new lines
-function DDS_PopUpMenuCtrl::updateScrollRect(%this)
+function GuiPopUpMenuCtrl::ddsUpdateScrollRect(%this)
 {
-	%scrollPos = %this.scroll.getPosition();
-	%listPos = %this.list.getPosition();
-	%listExt = %this.list.getExtent();
+	%scrollPos = %this.ddsScroll.getPosition();
+	%listPos = %this.ddsList.getPosition();
+	%listExt = %this.ddsList.getExtent();
 
 	%minWidth = getWord(%this.getExtent(), 0);
 
-	%lineCount = %this.list.rowCount();
+	%lineCount = %this.ddsList.rowCount();
 	%listWidth = 0;
 
 	//Find width of all currently visible lines
 	for(%i = 0; %i < %lineCount; %i++)
 	{
-		%w = %this.lineWidth[%this.lineLookup[%this.list.getRowId(%i)]];
+		%w = %this.ddsRowWidth[%this.ddsRowNum[%this.ddsList.getRowId(%i)]];
 
 		if(%w > %listWidth)
 			%listWidth = %w;
 	}
 
 	//Find height of lines
-	%listHeight = %lineCount * (%this.list.profile.fontSize + 2);
+	%listHeight = %lineCount * (%this.ddsList.profile.fontSize + 2);
 
 	%start = getWord(%scrollPos, 1);
 	%canvasHeight = getWord(Canvas.getExtent(), 1);
@@ -518,194 +571,176 @@ function DDS_PopUpMenuCtrl::updateScrollRect(%this)
 		%listHeight = 4;
 
 	//Update scroll rect
-	%this.scroll.resize(getWord(%scrollPos, 0), getWord(%scrollPos, 1), %listWidth, %listHeight + 2);
+	%this.ddsScroll.resize(getWord(%scrollPos, 0), getWord(%scrollPos, 1), %listWidth, %listHeight + 2);
 
 	//Fix list not updating correctly (?????)
-	%this.scroll.remove(%this.list);
-	%this.scroll.add(%this.list);
+	%this.ddsScroll.remove(%this.ddsList);
+	%this.ddsScroll.add(%this.ddsList);
+}
+
+//Update line filter
+function GuiPopUpMenuCtrl::ddsUpdateFilter(%this, %filter)
+{
+	//Filter unchanged - do nothing
+	if(%filter $= %this.ddsFilter)
+		return;
+
+	//Clear list
+	%this.ddsList.clear();
+	%this.ddsFilter = %filter;
+
+	if(strLen(%filter) == 0)
+	{
+		//Add all lines to list
+		for(%i = 0; %i < %this.ddsRowCount; %i++)
+			%this.ddsList.addRow(%this.ddsRowId[%i], %this.ddsRow[%i]);
+
+		//Select current line
+		%this.ddsSelectedId = %this.getSelected();
+	}
+	else
+	{
+		//Add all lines matching the filter
+		for(%i = 0; %i < %this.ddsRowCount; %i++)
+		{
+			if(getSubStr(%this.ddsRow[%i], 0, strLen(%filter)) $= %filter)
+				%this.ddsList.addRow(%this.ddsRowId[%i], %this.ddsRow[%i]);
+		}
+
+		//Does the previously selected line still exist?
+		if(%this.ddsList.getRowNumById(%this.ddsSelectedId) == -1)
+			%this.ddsSelectedId = %this.ddsList.getRowId(0);
+	}
+
+	%this.ddsUpdateTabHint();
+	%this.ddsUpdateScrollRect();
+	%this.ddsList.selectLineNoCallback(%this.ddsSelectedId);
+}
+
+//Update the tab completion hint
+function GuiPopUpMenuCtrl::ddsUpdateTabHint(%this)
+{
+	%len = strLen(%this.ddsFilter);
+
+	if(%len)
+	{
+		%remain = getSubStr(%this.ddsList.getRowTextById(%this.ddsSelectedId), %len, 255);
+		%this.ddsSearchText.setText(%this.ddsFilter @ %remain);
+	}
+	else
+		%this.ddsSearchText.setText("Search...");
+}
+
+//Selected a line - pass to original control
+function GuiPopUpMenuCtrl::ddsLineSelected(%this)
+{
+	%id = %this.ddsList.getSelectedId();
+
+	%this.ddsCloseMenu();
+	%this.setSelected(%id);
+}
+
+//Tab complete list
+function DDS_InputCtrl::onTabComplete(%this)
+{
+	%this.ddsControl.ddsList.setSelectedById(%this.ddsControl.ddsSelectedId);
 }
 
 
 
-//Gui callbacks
+//Moving the selected line
 ///////////////////////////////////////////////////////////////////////////
 
-//Clicked popup, open menu
-function DDS_PopUpMenuCtrl::onMouseDown(%this)
+//Start moving the selected line up
+function GuiPopupMenuCtrl::ddsStartMoveUp(%this)
 {
-	%this.openMenu();
+	%this.ddsMoveSelection(-1);
+
+	cancel(%this.ddsMoveSchedule);
+	%this.ddsMoveSchedule = %this.schedule(200, ddsRepeatMove, -1);
 }
+
+//Start moving the selected line down
+function GuiPopupMenuCtrl::ddsStartMoveDown(%this)
+{
+	%this.ddsMoveSelection(1);
+
+	cancel(%this.ddsMoveSchedule);
+	%this.ddsMoveSchedule = %this.schedule(200, ddsRepeatMove, 1);
+}
+
+//Repeat moving the selected line
+function GuiPopupMenuCtrl::ddsRepeatMove(%this, %dir)
+{
+	%this.ddsMoveSelection(%dir);
+
+	cancel(%this.ddsMoveSchedule);
+	%this.ddsMoveSchedule = %this.schedule(50, ddsRepeatMove, %dir);
+}
+
+//Stop moving the selected line
+function GuiPopupMenuCtrl::ddsStopMove(%this)
+{
+	cancel(%this.ddsMoveSchedule);
+}
+
+//Handle moving the selected line
+function GuiPopupMenuCtrl::ddsMoveSelection(%this, %dir)
+{
+	%curRow = %this.ddsList.getRowNumById(%this.ddsSelectedId);
+	%newRow = %curRow + %dir;
+	
+	if(%newRow < 0 || %newRow > %this.ddsRowCount - 1)
+		return;
+
+	%this.ddsSelectedId = %this.ddsList.getRowId(%newRow);
+	%this.ddsList.selectLineNoCallback(%this.ddsSelectedId);
+
+	%this.ddsUpdateTabHint();
+}
+
+
+
+//Closing a dds list
+///////////////////////////////////////////////////////////////////////////
 
 //Clicked popup background, close menu
 function DDS_BackgroundCtrl::onMouseDown(%this)
 {
-	%this.ddsControl.closeMenu();
+	%this.ddsControl.ddsCloseMenu();
 }
 
-//Selected a line - pass to original control
-function DDS_PopUpMenuCtrl::onLineSelected(%this)
+//Closes the popup menu
+function GuiPopUpMenuCtrl::ddsCloseMenu(%this)
 {
-	%id = %this.list.getSelectedId();
-
-	%this.closeMenu();
-	%this.realControl.setSelected(%id);
-}
-
-//Tab complete list
-function DDS_PopUpInputCtrl::onTabComplete(%this)
-{
-	%this.ddsControl.list.setSelectedById(%this.ddsControl.selectedId);
-}
-
-
-
-//Input callbacks
-///////////////////////////////////////////////////////////////////////////
-
-//Start moving the selected line up
-function DDS_PopUpMenuCtrl::startMoveUp(%this)
-{
-	%this.moveSelection(-1);
-
-	cancel(%this.moveSchedule);
-	%this.moveSchedule = %this.schedule(200, repeatMove, -1);
-}
-
-//Start moving the selected line down
-function DDS_PopUpMenuCtrl::startMoveDown(%this)
-{
-	%this.moveSelection(1);
-
-	cancel(%this.moveSchedule);
-	%this.moveSchedule = %this.schedule(200, repeatMove, 1);
-}
-
-//Repeat moving the selected line
-function DDS_PopUpMenuCtrl::repeatMove(%this, %dir)
-{
-	%this.moveSelection(%dir);
-
-	cancel(%this.moveSchedule);
-	%this.moveSchedule = %this.schedule(50, repeatMove, %dir);
-}
-
-//Stop moving the selected line
-function DDS_PopUpMenuCtrl::stopMove(%this)
-{
-	cancel(%this.moveSchedule);
-}
-
-//Handle moving the selected line
-function DDS_PopUpMenuCtrl::moveSelection(%this, %dir)
-{
-	%curRow = %this.list.getRowNumById(%this.selectedId);
-	%newRow = %curRow + %dir;
-
-	if(%newRow < 0 || %newRow > %this.list.rowCount() - 1)
+	//Menu not open - do nothing
+	if(!isObject(%this.ddsDialog))
 		return;
 
-	%this.selectedId = %this.list.getRowId(%newRow);
-	%this.list.selectLineNoCallback(%this.selectedId);
+	Canvas.popDialog(%this.ddsDialog);
+	%this.ddsDialog.delete();
 
-	%this.updateTabHint();
+	%this.ddsActionMap.pop();
+	%this.ddsActionMap.delete();
 }
 
 
 
-//GuiPopUpMenuCtrl hooks
+//Initialization
 ///////////////////////////////////////////////////////////////////////////
 
-//Fix missing function error
-if(!isFunction(GuiPopUpMenuCtrl, onRemove))
-	eval("function GuiPopUpMenuCtrl::onRemove(){}");
-
-//Packaged functions
-package DropDownSearch
+//Recursively initialize all drop down lists created before loading this script
+function SimGroup::ddsInitChildren(%this)
 {
-	//Stuff added to popup menu
-	function GuiPopUpMenuCtrl::add(%this, %name, %id, %scheme)
-	{
-		parent::add(%this, %name, %id, %scheme);
+	if(%this.getClassName() $= "GuiPopUpMenuCtrl")
+		%this.ddsInit();
 
-		//It's not possible to get the contents of a drop down control by script
-		//However if this is the first line added to it, we can still save it
-		if(!isObject(%this.ddsControl))
-		{
-			if(%this.size() != 1 || $DDS::BlockCtrl[%this.getName()])
-				return;
-
-			%this.ddsCreate();
-		}
-		
-		%this.ddsControl.addLineBack(%name, %id);
-	}
-
-	//Stuff added to popup menu (front)
-	function GuiPopUpMenuCtrl::addFront(%this, %name, %id, %scheme)
-	{
-		parent::addFront(%this, %name, %id, %scheme);
-
-		//It's not possible to get the contents of a drop down control by script
-		//However if this is the first line added to it, we can still save it
-		if(!isObject(%this.ddsControl))
-		{
-			if(%this.size() != 1 || $DDS::BlockCtrl[%this.getName()])
-				return;
-
-			%this.ddsCreate();
-		}
-		
-		%this.ddsControl.addLineFront(%name, %id);
-	}
-
-	//Popup menu sorted
-	function GuiPopUpMenuCtrl::sort(%this)
-	{
-		parent::sort(%this);
-
-		if(isObject(%this.ddsControl))
-			%this.ddsControl.sortLines = true;
-	}
-
-	//Popup menu cleared
-	function GuiPopUpMenuCtrl::clear(%this)
-	{
-		parent::clear(%this);
-
-		if(isObject(%this.ddsControl))
-			%this.ddsControl.clearLines();
-	}
-
-	//Force open popup menu
-	function GuiPopUpMenuCtrl::forceOnAction(%this)
-	{
-		if(isObject(%this.ddsControl))
-			%this.ddsControl.openMenu();
-		else
-			parent::forceOnAction(%this);
-	}
-
-	//Force close popup menu
-	function GuiPopUpMenuCtrl::forceClose(%this)
-	{
-		if(isObject(%this.ddsControl))
-			%this.ddsControl.closeMenu();
-		else
-			parent::forceClose(%this);
-	}
-
-	//Deleted popup menu
-	function GuiPopUpMenuCtrl::onRemove(%this)
-	{
-		if(isObject(%this.ddsControl))
-		{
-			%this.ddsControl.closeMenu();
-			%this.ddsControl.delete();
-		}
-
-		parent::onRemove(%this);
-	}
-};
+	for(%i = %this.getCount() - 1; %i >= 0; %i--)
+		%this.getObject(%i).ddsInitChildren();
+}
 
 //Activate package
 activatePackage(DropDownSearch);
+
+//Init all existing controls
+//GuiGroup.ddsInitChildren();
