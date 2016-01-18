@@ -414,7 +414,11 @@ function GuiPopUpMenuCtrl::ddsOpenMenu(%this)
 		//List doesn't fit below completely...
 		%listHeight = %canvasHeight - %startY - 12;
 		%listWidth += 16;
+
+		%this.ddsScrollBar = true;
 	}
+	else
+		%this.ddsScrollBar = false;
 
 	//List not wide enough
 	if(getWord(%thisExt, 0) > %listWidth)
@@ -569,7 +573,11 @@ function GuiPopUpMenuCtrl::ddsUpdateScrollRect(%this)
 	{
 		%listHeight = %canvasHeight - %start - 12;
 		%listWidth += 16;
+
+		%this.ddsScrollBar = true;
 	}
+	else
+		%this.ddsScrollBar = false;
 
 	//List not wide enough
 	if(%minWidth > %listWidth)
@@ -714,6 +722,23 @@ function ddsHandleScrolling(%val)
 	if(isObject($DDS::CurrentMenu))
 	{
 		$DDS::CurrentMenu.ddsStopMove();
+
+		//If we have a scroll bar, don't scroll the list while mouse is inside it
+		if($DDS::CurrentMenu.ddsScrollBar)
+		{
+			%scrollPos = $DDS::CurrentMenu.ddsScroll.getScreenPosition();
+			%scrollExt = $DDS::CurrentMenu.ddsScroll.getExtent();
+
+			%curPos = Canvas.getCursorPos();
+			%curX = getWord(%curPos, 0);
+			%curY = getWord(%curPos, 1);
+
+			if(%curX > getWord(%scrollPos, 0)
+			&& %curX < getWord(%scrollPos, 0) + getWord(%scrollExt, 0)
+			&& %curY > getWord(%scrollPos, 1)
+			&& %curY < getWord(%scrollPos, 1) + getWord(%scrollExt, 1))
+				return;
+		}
 
 		if(%val > 1)
 			$DDS::CurrentMenu.ddsMoveSelection(-1);
