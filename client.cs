@@ -42,7 +42,8 @@ package DropDownSearch
 	{
 		parent::onWake(%this);
 
-		%this.ddsInit();
+		if(%this.getClassName() $= "GuiPopupMenuCtrl")
+			%this.ddsInit();
 	}
 
 	//Drop down list was deleted, delete dds list
