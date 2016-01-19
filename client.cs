@@ -10,11 +10,23 @@ exec("./updater.cs");
 
 
 
-//Settings/Preferences
+//Preferences
 ///////////////////////////////////////////////////////////////////////////
 
 //Drop down lists added here will not be affected
 $DDS::BlockCtrl["ServerSettingsGui_MaxPlayers"] = true;
+
+//Whether we show results that contain the filter in the middle instead of the start
+$DDS::ShowExtendedResults = true;
+
+//Whether rows starting with the filter text are always first
+$DDS::SeperateExtendedResults = true;
+
+//Whether rows starting with the filter text are colored
+$DDS::ColorBasicResults = false;
+
+//Whether rows not starting with the filter text are colored
+$DDS::ColorExtendedResults = true;
 
 //Space to keep between the selected row and the scroll border
 $DDS::SelectionPadding = 120;
@@ -25,14 +37,14 @@ $DDS::SelectionPadding = 120;
 ///////////////////////////////////////////////////////////////////////////
 
 //Fix missing function errors
-if(!isFunction(GuiTextListCtrl, onAdd))
-	eval("function GuiTextListCtrl::onAdd(){}");
-
 if(!isFunction(GuiPopUpMenuCtrl, onWake))
 	eval("function GuiPopUpMenuCtrl::onWake(){}");
 
 if(!isFunction(GuiPopUpMenuCtrl, onRemove))
 	eval("function GuiPopUpMenuCtrl::onRemove(){}");
+
+if(!isFunction(GuiTextListCtrl, onAdd))
+	eval("function GuiTextListCtrl::onAdd(){}");
 
 //Packaged functions
 package DropDownSearch
@@ -104,7 +116,7 @@ package DropDownSearch
 			parent::forceClose(%this);
 	}
 
-	//Internal text list was created (used by function later on)
+	//Internal text list was created (hack to get rows from drop down)
 	function GuiTextListCtrl::onAdd(%this)
 	{
 		parent::onAdd(%this);
@@ -125,16 +137,18 @@ function GuiPopUpMenuCtrl::ddsCreateProfiles(%this)
 	%name = %profile.getName();
 
 	//Get mean between font and background color for highlighting
-	%fCol = getColorF(%profile.fontColor);
-	%bCol = getColorF(%profile.fillColor);
-	%hCol = getColorI(vectorScale(vectorAdd(%fCol, %bCol), 0.5) SPC 1);
+	%fontCol = getColorF(%profile.fontColor);
+	%fillCol = getColorF(%profile.fillColor);
+
+	%textCol = getColorI(vectoradd(%fontCol, vectorscale(vectorsub(%fillCol, %fontCol), 0.45)) SPC 1);
+	%backCol = getColorI(vectoradd(%fontCol, vectorscale(vectorsub(%fillCol, %fontCol), 0.75)) SPC 1);
 
 	//Text profile for tab completion hint
 	if(!$DDS::TextProfile[%name])
 	{
 		eval("%p = new GuiControlProfile(DDS_TextProfile_" @ %name @ ":" @ %name @ "){"
 			@ "justify = left;"
-			@ "fontColor = \"" @ %hCol @"\";"
+			@ "fontColor = \"" @ %textCol @"\";"
 			@ "textOffset = \"0 0\";"
 			@ "};"
 		);
@@ -162,8 +176,11 @@ function GuiPopUpMenuCtrl::ddsCreateProfiles(%this)
 	if(!$DDS::ListProfile[%name])
 	{
 		eval("%p = new GuiControlProfile(DDS_ListProfile_" @ %name @ ":" @ %name @ "){"
-			@ "fillColorHL = \"" @ %hCol @ "\";"
-			@ "fontColorHL = \"" @ %profile.fontColor @ "\";"
+			@ "fillColorHL = \"" @ %backCol @ "\";"
+			@ "fontColorHL = \"" @ %fontCol @ "\";"
+
+			@ "fontColors[2] = \"" @ %fontCol @ "\";"
+			@ "fontColors[3] = \"" @ %textCol @ "\";"
 			@ "mouseOverSelected = true;"
 			@ "};"
 		);
@@ -233,9 +250,6 @@ function DDS_ButtonCtrl::onMouseDown(%this)
 //Copy the rows from the drop down list to a buffer
 function GuiPopUpMenuCtrl::ddsUpdateRows(%this)
 {
-	//Make sure we use the id, or this will fail
-	%this = %this.getId();
-
 	//If the list is empty, don't do anything
 	if(%this.size() == 0)
 	{
@@ -243,8 +257,19 @@ function GuiPopUpMenuCtrl::ddsUpdateRows(%this)
 		return;
 	}
 
+	//%cnt = %this.size();
+	//for(%i = 0; %i < %cnt; %i++)
+	//{
+	//	%this.ddsRow[%i] = %this.getRowText(%i);
+	//	%this.ddsRowId[%i] = %this.getRowId(%i);
+	//	%this.ddsRowNum[%this.ddsRowId[%i]] = %i;
+	//}
+
 	//Can't copy the rows from the drop down list directly,
 	//so open the list and get them from the internal one...
+
+	//Make sure we use the id, or this will fail
+	%this = %this.getId();
 
 	//Prepare control to ensure it does NOT call any callbacks
 	%var = %this.variable;
@@ -458,7 +483,7 @@ function GuiPopUpMenuCtrl::ddsOpenMenu(%this)
 
 	//Add lines to list (no filter when opening list)
 	for(%i = 0; %i < %this.ddsRowCount; %i++)
-		%list.addRow(%this.ddsRowId[%i], %this.ddsRow[%i]);
+		%list.addRow(%i, %this.ddsRow[%i]);
 
 	//Fix list not extending to the far right (?????)
 	%list.resize(1, 1, 0, 0);
@@ -469,9 +494,12 @@ function GuiPopUpMenuCtrl::ddsOpenMenu(%this)
 
 
 	//Highlight the currently selected row
-	%this.ddsSelectedId = %this.getSelected();
-	%list.selectLineNoCallback(%this.ddsSelectedId);
+	%this.ddsSelectedRow = %this.ddsRowNum[%this.getSelected()];
 
+	if(%this.ddsSelectedRow == -1)
+		%this.ddsSelectedRow = 0;
+
+	%list.selectLineNoCallback(%this.ddsSelectedRow);
 	%this.ddsFilter = "";
 
 	//Focus on search field
@@ -556,7 +584,7 @@ function GuiPopUpMenuCtrl::ddsUpdateScrollRect(%this)
 	//Find width of all currently visible lines
 	for(%i = 0; %i < %lineCount; %i++)
 	{
-		%w = %this.ddsRowWidth[%this.ddsRowNum[%this.ddsList.getRowId(%i)]];
+		%w = %this.ddsRowWidth[%this.ddsList.getRowId(%i)];
 
 		if(%w > %listWidth)
 			%listWidth = %w;
@@ -606,32 +634,96 @@ function GuiPopUpMenuCtrl::ddsUpdateFilter(%this, %filter)
 	%this.ddsList.clear();
 	%this.ddsFilter = %filter;
 
-	if(strLen(%filter) == 0)
+	%filterLen = strLen(%filter);
+
+	if(!%filterLen)
 	{
-		//Add all lines to list
+		//Add all lines to list (no markup)
 		for(%i = 0; %i < %this.ddsRowCount; %i++)
-			%this.ddsList.addRow(%this.ddsRowId[%i], %this.ddsRow[%i]);
+			%this.ddsList.addRow(%i, %this.ddsRow[%i]);
 
 		//Select current line
-		%this.ddsSelectedId = %this.getSelected();
+		%this.ddsSelectedRow = %this.ddsRowNum[%this.getSelected()];
 	}
 	else
 	{
 		//Add all lines matching the filter
 		for(%i = 0; %i < %this.ddsRowCount; %i++)
 		{
-			if(getSubStr(%this.ddsRow[%i], 0, strLen(%filter)) $= %filter)
-				%this.ddsList.addRow(%this.ddsRowId[%i], %this.ddsRow[%i]);
+			%curRow = %this.ddsRow[%i];
+			%filterPos = strPos(strLwr(%curRow), strLwr(%filter));
+
+			//Check whether the line should be added
+			if(%filterPos == 0)
+			{
+				//Line starts with filter. Always add this one
+
+				if($DDS::ColorBasicResults)
+				{
+					//Line should be colored (highlights filter)
+					%curRow = "\c3" @ getSubStr(%curRow, 0, %filterPos)
+							@ "\c2" @ getSubStr(%curRow, %filterPos, %filterLen)
+							@ "\c3" @ getSubStr(%curRow, %filterPos + %filterLen, 255);
+				}
+			}
+			else if(%filterPos > 0 && $DDS::ShowExtendedResults && !$DDS::SeperateExtendedResults)
+			{
+				//Line contains filter, extended results are enabled and not seperated
+
+				if($DDS::ColorExtendedResults)
+				{
+					//Line should be colored (highlights filter)
+					%curRow = "\c3" @ getSubStr(%curRow, 0, %filterPos)
+							@ "\c2" @ getSubStr(%curRow, %filterPos, %filterLen)
+							@ "\c3" @ getSubStr(%curRow, %filterPos + %filterLen, 255);
+				}
+			}
+			else
+				//Line doesn't contain filter or shouldn't be shown, ignore
+				continue;
+
+			//Add line to list
+			%this.ddsList.addRow(%i, %curRow);
 		}
 
-		//Does the previously selected line still exist?
-		if(%this.ddsList.getRowNumById(%this.ddsSelectedId) == -1)
-			%this.ddsSelectedId = %this.ddsList.getRowId(0);
+		//If extended results are enabled and seperated, search again for them
+		if($DDS::ShowExtendedResults && $DDS::SeperateExtendedResults)
+		{
+			for(%i = 0; %i < %this.ddsRowCount; %i++)
+			{
+				%curRow = %this.ddsRow[%i];
+				%filterPos = strPos(strLwr(%curRow), strLwr(%filter));
+
+				//Check whether the line should be added
+				if(%filterPos > 0)
+				{
+					//Extended results don't start with filter
+
+					if($DDS::ColorExtendedResults)
+					{
+						//Line should be colored (highlights filter)
+						%curRow = "\c3" @ getSubStr(%curRow, 0, %filterPos)
+								@ "\c2" @ getSubStr(%curRow, %filterPos, %filterLen)
+								@ "\c3" @ getSubStr(%curRow, %filterPos + %filterLen, 255);
+					}
+				}
+				else
+					//Line is not an extended result, ignore
+					continue;
+
+				//Add line to list
+				%this.ddsList.addRow(%i, %curRow);
+			}
+		}
+
+		//If the previously selected line was removed, select the first one
+		if(%this.ddsList.getRowNumById(%this.ddsSelectedRow) == -1)
+			%this.ddsSelectedRow = %this.ddsList.getRowId(0);
 	}
 
 	%this.ddsUpdateTabHint();
 	%this.ddsUpdateScrollRect();
-	%this.ddsList.selectLineNoCallback(%this.ddsSelectedId);
+	%this.ddsList.selectLineNoCallback(%this.ddsSelectedRow);
 }
 
 //Update the tab completion hint
@@ -641,26 +733,30 @@ function GuiPopUpMenuCtrl::ddsUpdateTabHint(%this)
 
 	if(%len)
 	{
-		%remain = getSubStr(%this.ddsList.getRowTextById(%this.ddsSelectedId), %len, 255);
-		%this.ddsSearchText.setText(%this.ddsFilter @ %remain);
+		%text = %this.ddsRow[%this.ddsSelectedRow];
+
+		if(getSubStr(%text, 0, %len) $= %this.ddsFilter)
+			%this.ddsSearchText.setText(%this.ddsFilter @ getSubStr(%text, %len, 255));
+		else
+			%this.ddsSearchText.setText("");
 	}
 	else
 		%this.ddsSearchText.setText("Search...");
 }
 
-//Selected a line - pass to original control
-function GuiPopUpMenuCtrl::ddsLineSelected(%this)
-{
-	%id = %this.ddsList.getSelectedId();
-
-	%this.ddsCloseMenu();
-	%this.setSelected(%id);
-}
-
 //Tab complete list
 function DDS_InputCtrl::onTabComplete(%this)
 {
-	%this.ddsControl.ddsList.setSelectedById(%this.ddsControl.ddsSelectedId);
+	%this.ddsControl.ddsList.setSelectedById(%this.ddsControl.ddsSelectedRow);
+}
+
+//Selected a line - pass to original control
+function GuiPopUpMenuCtrl::ddsLineSelected(%this)
+{
+	%id = %this.ddsRowId[%this.ddsList.getSelectedId()];
+
+	%this.ddsCloseMenu();
+	%this.setSelected(%id);
 }
 
 
@@ -704,20 +800,20 @@ function GuiPopupMenuCtrl::ddsStopMove(%this)
 //Handle moving the selected line
 function GuiPopupMenuCtrl::ddsMoveSelection(%this, %dir)
 {
-	%curRow = %this.ddsList.getRowNumById(%this.ddsSelectedId);
+	%curRow = %this.ddsList.getRowNumById(%this.ddsSelectedRow);
 	%newRow = %curRow + %dir;
 	
 	if(%newRow < 0 || %newRow > %this.ddsList.rowCount() - 1)
 		return;
 
-	%this.ddsSelectedId = %this.ddsList.getRowId(%newRow);
-	%this.ddsList.selectLineNoCallback(%this.ddsSelectedId);
+	%this.ddsSelectedRow = %this.ddsList.getRowId(%newRow);
+	%this.ddsList.selectLineNoCallback(%this.ddsSelectedRow);
 
 	%this.ddsUpdateTabHint();
 }
 
 //Handle scrolling the selected line with mouse
-function ddsHandleScrolling(%val)
+function ddsHandleScrolling(%val, %a, %b)
 {
 	if(isObject($DDS::CurrentMenu))
 	{
@@ -726,17 +822,20 @@ function ddsHandleScrolling(%val)
 		//If we have a scroll bar, don't scroll the list while mouse is inside it
 		if($DDS::CurrentMenu.ddsScrollBar)
 		{
-			%scrollPos = $DDS::CurrentMenu.ddsScroll.getScreenPosition();
 			%scrollExt = $DDS::CurrentMenu.ddsScroll.getExtent();
+
+			%scrollPos = $DDS::CurrentMenu.ddsScroll.getScreenPosition();
+			%scrollX = getWord(%scrollPos, 0);
+			%scrollY = getWord(%scrollPos, 1);
 
 			%curPos = Canvas.getCursorPos();
 			%curX = getWord(%curPos, 0);
 			%curY = getWord(%curPos, 1);
 
-			if(%curX > getWord(%scrollPos, 0)
-			&& %curX < getWord(%scrollPos, 0) + getWord(%scrollExt, 0)
-			&& %curY > getWord(%scrollPos, 1)
-			&& %curY < getWord(%scrollPos, 1) + getWord(%scrollExt, 1))
+			if(%curX > %scrollX
+			&& %curX < %scrollX + getWord(%scrollExt, 0)
+			&& %curY > %scrollY
+			&& %curY < %scrollY + getWord(%scrollExt, 1))
 				return;
 		}
 
