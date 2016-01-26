@@ -54,8 +54,7 @@ package DropDownSearch
 	{
 		parent::onWake(%this);
 
-		if(%this.getClassName() $= "GuiPopupMenuCtrl")
-			%this.ddsInit();
+		%this.ddsInit();
 	}
 
 	//Drop down list was deleted, delete dds list
@@ -294,8 +293,8 @@ function GuiPopUpMenuCtrl::ddsUpdateRows(%this)
 	{
 		%cnt = %list.rowCount();
 
-		//Copy lines
-		for(%i = 0; %i < %cnt; %i++)
+		//Copy lines reversed, in case an id is used for multiple rows
+		for(%i = %cnt - 1; %i >= 0; %i--)
 		{
 			%this.ddsRow[%i] = %list.getRowText(%i);
 			%this.ddsRowId[%i] = %list.getRowId(%i);
@@ -753,10 +752,17 @@ function DDS_InputCtrl::onTabComplete(%this)
 //Selected a line - pass to original control
 function GuiPopUpMenuCtrl::ddsLineSelected(%this)
 {
-	%id = %this.ddsRowId[%this.ddsList.getSelectedId()];
-
+	%row = %this.ddsList.getSelectedId();
 	%this.ddsCloseMenu();
-	%this.setSelected(%id);
+
+	//We can't directly select a row number, but we can open the list, select, close it
+	%this.ddsOverride = false;
+	
+	%this.forceOnAction();
+	$DDS::LastTextList.setSelectedRow(%row);
+	%this.forceClose();
+
+	%this.ddsOverride = true;
 }
 
 
