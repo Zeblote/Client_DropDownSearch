@@ -355,6 +355,10 @@ function GuiPopUpMenuCtrl::ddsCalcListWidth(%this)
 //Open the dds list
 function GuiPopUpMenuCtrl::ddsOpenMenu(%this)
 {
+	//Control is disabled - do nothing
+	if(!%this.enabled)
+		return;
+
 	//Menu already open - do nothing
 	if(isObject(%this.ddsDialog))
 		return;
