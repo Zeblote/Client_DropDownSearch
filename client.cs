@@ -356,7 +356,7 @@ function GuiPopUpMenuCtrl::ddsCalcListWidth(%this)
 function GuiPopUpMenuCtrl::ddsOpenMenu(%this)
 {
 	//Control is disabled - do nothing
-	if(!%this.enabled)
+	if(%this.enabled $= "0")
 		return;
 
 	//Menu already open - do nothing
