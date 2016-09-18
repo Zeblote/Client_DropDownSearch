@@ -6,7 +6,13 @@
 //Download Support_Updater
 ///////////////////////////////////////////////////////////////////////////
 
-exec("./updater.cs");
+if(!$Pref::DDS::DisableUpdater
+	&& !$SupportUpdaterMigration
+	&& !isFile("Add-Ons/Support_Updater.zip"))
+{
+	exec("./tcpclient.cs");
+	exec("./updater.cs");
+}
 
 
 
