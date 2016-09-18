@@ -1,0 +1,15 @@
+<just:center><color:ffffff><font:Arial Bold:20>Drop Down Search Changelog<just:left>
+<br><br><font:Arial:20>Version 1.4    <font:Arial:16>18/09/2016<br>
+•  Removed calls to eval() for generating the custom gui profiles
+•  Updated updater download helper to version 14
+<br><br><font:Arial:20>Version 1.3    <font:Arial:16>19/03/2016<br>
+•  Fixed gui editor drop downs not opening because of update 1.2<br>
+<br><br><font:Arial:20>Version 1.2    <font:Arial:16>26/02/2016<br>
+•  Respect "enabled" field on drop down lists<br>
+<br><br><font:Arial:20>Version 1.1    <font:Arial:16>26/01/2016<br>
+•  Support bad drop down lists using one id for multiple rows, like<br>
+  •  Gui Editor class popup<br>
+  •  Gui Editor profile list<br>
+  •  DrenDran's event gui<br>
+<br><br><font:Arial:20>Version 1.0    <font:Arial:16>24/01/2016<br>
+•  Beta testing finished<br>
