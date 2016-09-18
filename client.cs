@@ -134,6 +134,8 @@ function GuiPopUpMenuCtrl::ddsCreateProfiles(%this)
 {
 	%profile = (strLen(%this.profile) ? %this.profile : GuiPopUpMenuProfile);
 	%name = %profile.getName();
+	%profile = %profile.getId();
+	%profile.setName("DDS_TempProfileName");
 
 	//Get mean between font and background color for highlighting
 	%fontCol = getColorF(%profile.fontColor);
@@ -145,12 +147,12 @@ function GuiPopUpMenuCtrl::ddsCreateProfiles(%this)
 	//Text profile for tab completion hint
 	if(!$DDS::TextProfile[%name])
 	{
-		eval("%p = new GuiControlProfile(DDS_TextProfile_" @ %name @ ":" @ %name @ "){"
-			@ "justify = left;"
-			@ "fontColor = \"" @ %textCol @"\";"
-			@ "textOffset = \"0 0\";"
-			@ "};"
-		);
+		%p = new GuiControlProfile("DDS_TextProfile_" @ %name : DDS_TempProfileName)
+		{
+			justify = left;
+			fontColor = %textCol;
+			textOffset = "0 0";
+		};
 
 		$DDS::TextProfile[%name] = %p;
 	}
@@ -158,15 +160,15 @@ function GuiPopUpMenuCtrl::ddsCreateProfiles(%this)
 	//Text profile for search input
 	if(!$DDS::InputProfile[%name])
 	{
-		eval("%p = new GuiControlProfile(DDS_InputProfile_" @ %name @ ":" @ %name @ "){"
-			@ "justify = left;"
-			@ "canKeyFocus = true;"
-			@ "textOffset = \"0 0\";"
-			@ "border = false;"
-			@ "opague = false;"
-			@ "fillColor = \"0 0 0 0\";"
-			@ "};"
-		);
+		%p = new GuiControlProfile("DDS_InputProfile_" @ %name : DDS_TempProfileName)
+		{
+			justify = left;
+			canKeyFocus = true;
+			textOffset = "0 0";
+			border = false;
+			opague = false;
+			fillColor = "0 0 0 0";
+		};
 
 		$DDS::InputProfile[%name] = %p;
 	}
@@ -174,18 +176,18 @@ function GuiPopUpMenuCtrl::ddsCreateProfiles(%this)
 	//Text profile for dds list
 	if(!$DDS::ListProfile[%name])
 	{
-		eval("%p = new GuiControlProfile(DDS_ListProfile_" @ %name @ ":" @ %name @ "){"
-			@ "fillColorHL = \"" @ %backCol @ "\";"
-			@ "fontColorHL = \"" @ %fontCol @ "\";"
-
-			@ "fontColors[2] = \"" @ %fontCol @ "\";"
-			@ "fontColors[3] = \"" @ %textCol @ "\";"
-			@ "mouseOverSelected = true;"
-			@ "};"
-		);
+		%p = new GuiControlProfile("DDS_ListProfile_" @ %name : DDS_TempProfileName){
+			fillColorHL = %backCol;
+			fontColorHL = %fontCol;
+			fontColors[2] = %fontCol;
+			fontColors[3] = %textCol;
+			mouseOverSelected = true;
+		};
 
 		$DDS::ListProfile[%name] = %p;
 	}
+
+	%profile.setName(%name);
 }
 
 //Creates better popup menu to replace original
